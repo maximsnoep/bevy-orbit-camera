@@ -59,7 +59,7 @@ pub fn control_system(
     let cursor_delta: Vec2 = mouse_motion_events.read().map(|event| event.delta).sum();
 
     // ORBIT
-    if keyboard.pressed(KeyCode::ControlLeft) {
+    if keyboard.pressed(KeyCode::ControlLeft) || mouse_buttons.pressed(MouseButton::Middle) {
         let delta = mouse_rotate_sensitivity * cursor_delta;
         look_angles.add_yaw(time_delta * -delta.x);
         look_angles.add_pitch(time_delta * delta.y);

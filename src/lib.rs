@@ -1,3 +1,4 @@
+pub mod automatic;
 mod control;
 mod plugin;
 mod transform;

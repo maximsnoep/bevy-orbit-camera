@@ -43,7 +43,7 @@ impl LookTransform {
     }
 }
 
-pub fn transform_system(mut cameras: Query<(&LookTransform, &mut Transform)>) {
+pub fn system(mut cameras: Query<(&LookTransform, &mut Transform)>) {
     for (look_transform, mut scene_transform) in cameras.iter_mut() {
         *scene_transform = (*look_transform).into()
     }

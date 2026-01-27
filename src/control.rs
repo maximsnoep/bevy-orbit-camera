@@ -24,7 +24,7 @@ impl Default for Controller {
     }
 }
 
-pub fn control_system(
+pub fn system(
     time: Res<Time>,
     mut mouse_wheel_reader: MessageReader<MouseWheel>,
     mut mouse_motion_events: MessageReader<MouseMotion>,

@@ -1,6 +1,7 @@
 use crate::transform::LookTransform;
 use bevy::input::mouse::{MouseMotion, MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
+use std::f32::consts::PI;
 
 /// A 3rd person camera that orbits around the target.
 #[derive(Clone, Component, Copy, Debug, Reflect)]
@@ -52,15 +53,10 @@ pub fn system(
     // Amount of time since last update
     let time_delta = time.delta_secs();
     // Mouse movement since last update
-    let max_cursor_delta = 50.0;
     let cursor_delta = mouse_motion_events
         .read()
         .map(|event| event.delta)
-        .sum::<Vec2>()
-        .clamp(
-            Vec2::splat(-max_cursor_delta),
-            Vec2::splat(max_cursor_delta),
-        );
+        .sum::<Vec2>();
 
     // Amount of scroll since last update
     let scroll_delta = mouse_wheel_reader.read().fold(1.0, |acc, event| {
@@ -83,17 +79,10 @@ pub fn system(
         // yaw rotates around "up"
         let yaw = time_delta * -delta.x;
         forward = Quat::from_axis_angle(up, yaw) * forward;
-        forward = forward.normalize();
 
         // pitch rotates around "right"
         let pitch = time_delta * delta.y;
         forward = Quat::from_axis_angle(up.cross(forward).normalize(), pitch) * forward;
-        forward = forward.normalize();
-
-        // if close to parallel, do not rotate (reset back to original forward)
-        if forward.dot(up).abs() > 0.99 {
-            forward = (transform.target - transform.eye).normalize();
-        }
     }
 
     // TRANSLATE
@@ -101,12 +90,14 @@ pub fn system(
     let mut target = transform.target;
     if mouse_buttons.pressed(MouseButton::Right) {
         let delta = mouse_translate_sensitivity * cursor_delta;
-        target += time_delta * (delta.x * up.cross(forward).normalize() + delta.y * up);
+        target += time_delta
+            * (delta.x * up.cross(forward).normalize()
+                + delta.y * forward.cross(up.cross(forward)).normalize());
     }
 
     // ZOOM
     // changes the RADIUS.
-    let radius = transform.radius() * scroll_delta;
+    let radius = (transform.radius() * scroll_delta).clamp(0.001, 1000000.0);
 
     // Do the transformations
     transform.target = target;

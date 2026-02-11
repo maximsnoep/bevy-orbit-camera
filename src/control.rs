@@ -1,7 +1,6 @@
 use crate::transform::LookTransform;
 use bevy::input::mouse::{MouseMotion, MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
-use std::f32::consts::PI;
 
 /// A 3rd person camera that orbits around the target.
 #[derive(Clone, Component, Copy, Debug, Reflect)]
@@ -30,7 +29,7 @@ pub fn system(
     mut mouse_motion_events: MessageReader<MouseMotion>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     keyboard: Res<ButtonInput<KeyCode>>,
-    mut cameras: Query<(&Controller, &mut LookTransform, &Transform)>,
+    mut cameras: Query<(&Controller, &mut LookTransform)>,
 ) {
     // Can only control one camera at a time.
     let (
@@ -42,130 +41,74 @@ pub fn system(
             ..
         },
         mut transform,
-        scene_transform,
     ) = match cameras.single_mut() {
-        Ok((controller, look_transform, scene_transform)) => {
-            (controller, look_transform, scene_transform)
-        }
+        Ok((controller, look_transform)) => (controller, look_transform),
         Err(e) => {
             println!("Error handling bevy-orbit-camera controller: {}", e);
             return;
         }
     };
 
-    let mut look_angles = LookAngles::from_vector(-transform.look_direction().unwrap());
-    let mut radius_scalar = 1.0;
+    // Amount of time since last update
     let time_delta = time.delta_secs();
-    let cursor_delta: Vec2 = mouse_motion_events.read().map(|event| event.delta).sum();
+    // Mouse movement since last update
+    let max_cursor_delta = 50.0;
+    let cursor_delta = mouse_motion_events
+        .read()
+        .map(|event| event.delta)
+        .sum::<Vec2>()
+        .clamp(
+            Vec2::splat(-max_cursor_delta),
+            Vec2::splat(max_cursor_delta),
+        );
 
-    // ORBIT
-    if keyboard.pressed(KeyCode::ControlLeft) || mouse_buttons.pressed(MouseButton::Middle) {
-        let delta = mouse_rotate_sensitivity * cursor_delta;
-        look_angles.add_yaw(time_delta * -delta.x);
-        look_angles.add_pitch(time_delta * delta.y);
-    }
-
-    // TRANSLATE
-    if mouse_buttons.pressed(MouseButton::Right) {
-        let delta = mouse_translate_sensitivity * cursor_delta;
-        let right_dir = scene_transform.rotation * -Vec3::X;
-        let up_dir = scene_transform.rotation * Vec3::Y;
-        transform.target += time_delta * delta.x * right_dir + time_delta * delta.y * up_dir;
-    }
-
-    // ZOOM
-    let scalar = mouse_wheel_reader.read().fold(1.0, |acc, event| {
-        // scale the event magnitude per pixel or per line
+    // Amount of scroll since last update
+    let scroll_delta = mouse_wheel_reader.read().fold(1.0, |acc, event| {
         let scroll_amount = match event.unit {
             MouseScrollUnit::Line => event.y,
-            MouseScrollUnit::Pixel => event.y / pixels_per_line,
+            MouseScrollUnit::Pixel => event.y / *pixels_per_line,
         };
         acc * (1.0 - scroll_amount * mouse_wheel_zoom_sensitivity)
     });
-    radius_scalar *= scalar;
 
-    transform.eye = transform.target
-        + (radius_scalar * transform.radius()).clamp(0.001, 1000000.0) * look_angles.unit_vector();
-}
+    // World up vector (does not change).
+    let up = transform.up.normalize();
 
-/// A (yaw, pitch) pair representing a direction.
-#[derive(Debug, PartialEq, Clone, Copy, Default, Reflect)]
-#[reflect(Default, Debug, PartialEq)]
-pub struct LookAngles {
-    // The fields are protected to keep them in an allowable range for the camera transform.
-    yaw: f32,
-    pitch: f32,
-}
+    // ROTATE / ORBIT
+    // changes the FORWARD vector.
+    let mut forward = (transform.target - transform.eye).normalize(); // eye -> target
+    if keyboard.pressed(KeyCode::ControlLeft) || mouse_buttons.pressed(MouseButton::Middle) {
+        let delta = mouse_rotate_sensitivity * cursor_delta;
 
-impl LookAngles {
-    pub fn from_vector(v: Vec3) -> Self {
-        let mut p = Self::default();
-        p.set_direction(v);
-        p
-    }
+        // yaw rotates around "up"
+        let yaw = time_delta * -delta.x;
+        forward = Quat::from_axis_angle(up, yaw) * forward;
+        forward = forward.normalize();
 
-    pub fn unit_vector(self) -> Vec3 {
-        unit_vector_from_yaw_and_pitch(self.yaw, self.pitch)
-    }
+        // pitch rotates around "right"
+        let pitch = time_delta * delta.y;
+        forward = Quat::from_axis_angle(up.cross(forward).normalize(), pitch) * forward;
+        forward = forward.normalize();
 
-    pub fn set_direction(&mut self, v: Vec3) {
-        let (yaw, pitch) = yaw_and_pitch_from_vector(v);
-        self.set_yaw(yaw);
-        self.set_pitch(pitch);
-    }
-
-    pub fn set_yaw(&mut self, yaw: f32) {
-        self.yaw = yaw % (2.0 * PI);
-    }
-
-    pub fn add_yaw(&mut self, delta: f32) {
-        self.set_yaw(self.yaw + delta);
-    }
-
-    pub fn set_pitch(&mut self, pitch: f32) {
-        // Things can get weird if we are parallel to the UP vector.
-        let up_eps = 0.01;
-        self.pitch = pitch.clamp(-PI / 2.0 + up_eps, PI / 2.0 - up_eps);
-    }
-
-    pub fn add_pitch(&mut self, delta: f32) {
-        self.set_pitch(self.pitch + delta);
-    }
-}
-
-/// Returns pitch and yaw angles that rotates z unit vector to v. The yaw is applied first to z about the y axis to get z'. Then
-/// the pitch is applied about some axis orthogonal to z' in the XZ plane to get v.
-fn yaw_and_pitch_from_vector(v: Vec3) -> (f32, f32) {
-    debug_assert_ne!(v, Vec3::ZERO);
-
-    let y = Vec3::Y;
-    let z = Vec3::Z;
-
-    let v_xz = Vec3::new(v.x, 0.0, v.z);
-
-    if v_xz == Vec3::ZERO {
-        if v.dot(y) > 0.0 {
-            return (0.0, PI / 2.0);
-        } else {
-            return (0.0, -PI / 2.0);
+        // if close to parallel, do not rotate (reset back to original forward)
+        if forward.dot(up).abs() > 0.99 {
+            forward = (transform.target - transform.eye).normalize();
         }
     }
 
-    let mut yaw = v_xz.angle_between(z);
-    if v.x < 0.0 {
-        yaw *= -1.0;
+    // TRANSLATE
+    // changes the TARGET vector.
+    let mut target = transform.target;
+    if mouse_buttons.pressed(MouseButton::Right) {
+        let delta = mouse_translate_sensitivity * cursor_delta;
+        target += time_delta * (delta.x * up.cross(forward).normalize() + delta.y * up);
     }
 
-    let mut pitch = v_xz.angle_between(v);
-    if v.y < 0.0 {
-        pitch *= -1.0;
-    }
+    // ZOOM
+    // changes the RADIUS.
+    let radius = transform.radius() * scroll_delta;
 
-    (yaw, pitch)
-}
-
-fn unit_vector_from_yaw_and_pitch(yaw: f32, pitch: f32) -> Vec3 {
-    let ray = Mat3::from_rotation_y(yaw) * Vec3::Z;
-    let pitch_axis = ray.cross(Vec3::Y);
-    Mat3::from_axis_angle(pitch_axis, pitch) * ray
+    // Do the transformations
+    transform.target = target;
+    transform.eye = target - forward * radius;
 }

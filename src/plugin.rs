@@ -2,19 +2,15 @@ use crate::automatic;
 use crate::control;
 use crate::transform;
 use bevy::prelude::*;
-use bevy::time::common_conditions::on_timer;
-use std::time::Duration;
 
 pub struct OrbitCameraPlugin;
 
 impl Plugin for OrbitCameraPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<automatic::AutomaticRotation>()
-            .add_systems(Update, control::system)
-            .add_systems(Update, transform::system)
             .add_systems(
-                FixedUpdate,
-                automatic::update.run_if(on_timer(Duration::from_millis(10))),
+                Update,
+                (control::system, automatic::update, transform::system).chain(),
             );
     }
 }
@@ -22,16 +18,25 @@ impl Plugin for OrbitCameraPlugin {
 #[derive(Bundle)]
 pub struct OrbitCameraBundle {
     controller: control::Controller,
+    controller_state: control::OrbitControllerState,
     look_transform: transform::LookTransform,
     transform: Transform,
 }
 
 impl OrbitCameraBundle {
     pub fn new(controller: control::Controller, eye: Vec3, target: Vec3, up: Vec3) -> Self {
+        let look_transform = transform::LookTransform::new(eye, target, up);
+        let up = up.try_normalize().unwrap_or(Vec3::Y);
+        let controller_state = (target - eye)
+            .try_normalize()
+            .map(|forward| control::OrbitControllerState::from_forward(forward, up))
+            .unwrap_or_else(|| control::OrbitControllerState::from_forward(Vec3::NEG_Z, up));
+
         Self {
             controller,
-            look_transform: transform::LookTransform::new(eye, target, up),
-            transform: Transform::from_translation(eye).looking_at(target, up),
+            controller_state,
+            look_transform,
+            transform: look_transform.into(),
         }
     }
 }

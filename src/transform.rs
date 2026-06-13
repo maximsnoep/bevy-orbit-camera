@@ -15,7 +15,9 @@ pub struct LookTransform {
 
 impl From<LookTransform> for Transform {
     fn from(t: LookTransform) -> Self {
-        Transform::from_translation(t.eye).looking_at(t.eye + (t.target - t.eye).normalize(), t.up)
+        let direction = (t.target - t.eye).try_normalize().unwrap_or(Vec3::NEG_Z);
+        let up = valid_up(t.up, direction);
+        Transform::from_translation(t.eye).looking_at(t.eye + direction, up)
     }
 }
 
@@ -43,8 +45,17 @@ impl LookTransform {
     }
 }
 
-pub fn system(mut cameras: Query<(&LookTransform, &mut Transform)>) {
+pub fn system(mut cameras: Query<(&LookTransform, &mut Transform), Changed<LookTransform>>) {
     for (look_transform, mut scene_transform) in cameras.iter_mut() {
-        *scene_transform = (*look_transform).into()
+        *scene_transform = (*look_transform).into();
+    }
+}
+
+fn valid_up(up: Vec3, direction: Vec3) -> Vec3 {
+    let up = up.try_normalize().unwrap_or(Vec3::Y);
+    if up.cross(direction).length_squared() > 1e-6 {
+        up
+    } else {
+        direction.any_orthonormal_vector()
     }
 }

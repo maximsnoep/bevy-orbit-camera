@@ -1,9 +1,10 @@
+use std::f32;
+
 use crate::transform::LookTransform;
 use bevy::input::mouse::{MouseMotion, MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
 
-const MAX_PITCH_ANGLE: f32 = 1.5260712;
-const ROTATION_RADIANS_PER_PIXEL: f32 = 0.0075;
+const ROTATION_RADIANS_PER_PIXEL: f32 = 0.01;
 const TRANSLATION_UNITS_PER_PIXEL: f32 = 0.01;
 
 #[derive(Clone, Component, Copy, Debug, Reflect)]
@@ -98,7 +99,8 @@ pub fn system(
         let delta = mouse_rotate_sensitivity * cursor_delta * ROTATION_RADIANS_PER_PIXEL;
 
         state.yaw -= delta.x;
-        state.pitch = (state.pitch - delta.y).clamp(-MAX_PITCH_ANGLE, MAX_PITCH_ANGLE);
+        state.pitch =
+            (state.pitch - delta.y).clamp(-f32::consts::FRAC_PI_2, f32::consts::FRAC_PI_2);
     }
     let forward = state.forward(up);
 
@@ -122,7 +124,7 @@ pub fn system(
 
     // ZOOM
     // changes the RADIUS.
-    let radius = (transform.radius() * scroll_delta).clamp(0.001, 1000000.0);
+    let radius = transform.radius() * scroll_delta;
 
     // Do the transformations
     transform.target = target;
@@ -134,11 +136,11 @@ impl OrbitControllerState {
         let pitch = forward.dot(up).clamp(-1.0, 1.0).asin();
         let yaw_zero_forward = (forward - up * forward.dot(up))
             .try_normalize()
-            .unwrap_or_else(|| orthonormal_vector(up));
+            .unwrap_or_else(|| up.any_orthonormal_vector());
 
         Self {
             yaw: 0.0,
-            pitch: pitch.clamp(-MAX_PITCH_ANGLE, MAX_PITCH_ANGLE),
+            pitch: pitch.clamp(-f32::consts::FRAC_PI_2, f32::consts::FRAC_PI_2),
             yaw_zero_forward,
         }
     }
@@ -147,8 +149,4 @@ impl OrbitControllerState {
         let horizontal = Quat::from_axis_angle(up, self.yaw) * self.yaw_zero_forward;
         (horizontal * self.pitch.cos() + up * self.pitch.sin()).normalize()
     }
-}
-
-fn orthonormal_vector(up: Vec3) -> Vec3 {
-    up.any_orthonormal_vector()
 }

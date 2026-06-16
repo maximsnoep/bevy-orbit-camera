@@ -1,34 +1,12 @@
-use bevy::{
-    ecs::prelude::*, math::prelude::*, prelude::ReflectDefault, reflect::Reflect,
-    transform::components::Transform,
-};
+use bevy::{ecs::prelude::*, math::prelude::*, reflect::Reflect, transform::components::Transform};
 
-/// An eye and the target it's looking at. As a component, this can be modified in place of bevy's `Transform`, and the two will
-/// stay in sync.
+/// An eye and the target it's looking at. As a component, this can be modified in place of bevy's `Transform`, and the two will stay in sync.
 #[derive(Component, Debug, PartialEq, Clone, Copy, Reflect)]
-#[reflect(Component, Default, Debug, PartialEq)]
+#[reflect(Component, Debug, PartialEq)]
 pub struct LookTransform {
     pub eye: Vec3,
     pub target: Vec3,
     pub up: Vec3,
-}
-
-impl From<LookTransform> for Transform {
-    fn from(t: LookTransform) -> Self {
-        let direction = (t.target - t.eye).try_normalize().unwrap_or(Vec3::NEG_Z);
-        let up = valid_up(t.up, direction);
-        Transform::from_translation(t.eye).looking_at(t.eye + direction, up)
-    }
-}
-
-impl Default for LookTransform {
-    fn default() -> Self {
-        Self {
-            eye: Vec3::default(),
-            target: Vec3::default(),
-            up: Vec3::Y,
-        }
-    }
 }
 
 impl LookTransform {
@@ -39,15 +17,19 @@ impl LookTransform {
     pub fn radius(&self) -> f32 {
         (self.target - self.eye).length()
     }
-
-    pub fn look_direction(&self) -> Option<Vec3> {
-        (self.target - self.eye).try_normalize()
-    }
 }
 
 pub fn system(mut cameras: Query<(&LookTransform, &mut Transform), Changed<LookTransform>>) {
     for (look_transform, mut scene_transform) in cameras.iter_mut() {
         *scene_transform = (*look_transform).into();
+    }
+}
+
+impl From<LookTransform> for Transform {
+    fn from(t: LookTransform) -> Self {
+        let direction = (t.target - t.eye).try_normalize().unwrap_or(Vec3::NEG_Z);
+        let up = valid_up(t.up, direction);
+        Transform::from_translation(t.eye).looking_at(t.eye + direction, up)
     }
 }
 

@@ -99,8 +99,10 @@ pub fn system(
         let delta = mouse_rotate_sensitivity * cursor_delta * ROTATION_RADIANS_PER_PIXEL;
 
         state.yaw -= delta.x;
-        state.pitch =
-            (state.pitch - delta.y).clamp(-f32::consts::FRAC_PI_2, f32::consts::FRAC_PI_2);
+        state.pitch = (state.pitch - delta.y).clamp(
+            -f32::consts::FRAC_PI_2 * 0.99,
+            f32::consts::FRAC_PI_2 * 0.99,
+        );
     }
     let forward = state.forward(up);
 
@@ -140,7 +142,10 @@ impl OrbitControllerState {
 
         Self {
             yaw: 0.0,
-            pitch: pitch.clamp(-f32::consts::FRAC_PI_2, f32::consts::FRAC_PI_2),
+            pitch: pitch.clamp(
+                -f32::consts::FRAC_PI_2 * 0.99,
+                f32::consts::FRAC_PI_2 * 0.99,
+            ),
             yaw_zero_forward,
         }
     }

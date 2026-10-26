@@ -1,14 +1,12 @@
 [package]
 name = "bevy-orbit-camera"
 description = "A tiny Bevy plugin for an orbit camera controller."
-version = "0.3.3"
+version = "0.4.0"
 repository = "https://github.com/maximsnoep/bevy-orbit-camera"
 authors = ["Snoep <maxim@snoep.io>"]
 keywords = ["bevy", "orbit-camera", "plugin"]
 edition = "2024"
 license = "MIT"
 
-[dependencies.bevy]
-version = "0.18.1"
-default-features = false
-features = ["bevy_pbr"]
+[dependencies]
+bevy = { version = "0.20.0", default-features = false, features = ["bevy_pbr"] }

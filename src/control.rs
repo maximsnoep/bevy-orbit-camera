@@ -11,6 +11,9 @@ const TRANSLATION_UNITS_PER_PIXEL: f32 = 0.01;
 // Prevents huge jumps from RDP, focus changes, cursor teleporting, etc.
 const MAX_CURSOR_DELTA: f32 = 100.0;
 
+// Prevents extreme zooms (or a collapsed camera) from many scroll events in a single update.
+const MAX_ZOOM_FACTOR: f32 = 1.5;
+
 #[derive(Clone, Component, Copy, Debug, Reflect)]
 #[reflect(Component, Debug)]
 pub(crate) struct OrbitControllerState {
@@ -82,6 +85,8 @@ pub fn system(
 
         acc * (1.0 - scroll_amount * mouse_wheel_zoom_sensitivity)
     });
+    // Scroll events pile up during slow frames: limit the zoom of a single update.
+    let scroll_delta = scroll_delta.clamp(1.0 / MAX_ZOOM_FACTOR, MAX_ZOOM_FACTOR);
 
     // World up vector.
     let up = transform.up.try_normalize().unwrap_or(Vec3::Y);
